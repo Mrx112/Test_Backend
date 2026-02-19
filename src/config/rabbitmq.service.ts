@@ -15,13 +15,21 @@ export class RabbitMqService {
    */
   async connect(): Promise<void> {
     try {
-      const rabbitMqUrl = this.configService.get<string>('RABBITMQ_URL');
+      const rabbitMqUrl = this.configService.get<string>('RABBITMQ_URL') || 'amqp://guest:guest@localhost';
+      if (!rabbitMqUrl) {
+        throw new Error('RABBITMQ_URL is not configured');
+      }
+
       this.connection = await amqp.connect(rabbitMqUrl);
       this.channel = await this.connection.createChannel();
 
       // Setup exchange and queue
-      const exchange = this.configService.get<string>('RABBITMQ_EXCHANGE');
-      const queue = this.configService.get<string>('RABBITMQ_QUEUE');
+      const exchange = this.configService.get<string>('RABBITMQ_EXCHANGE') || 'messages';
+      const queue = this.configService.get<string>('RABBITMQ_QUEUE') || 'messages';
+
+      if (!exchange || !queue) {
+        throw new Error('RABBITMQ_EXCHANGE or RABBITMQ_QUEUE is not configured');
+      }
 
       await this.channel.assertExchange(exchange, 'topic', { durable: true });
       await this.channel.assertQueue(queue, { durable: true });
@@ -46,7 +54,11 @@ export class RabbitMqService {
       throw new Error('RabbitMQ is not connected');
     }
 
-    const exchange = this.configService.get<string>('RABBITMQ_EXCHANGE');
+    const exchange = this.configService.get<string>('RABBITMQ_EXCHANGE') || 'messages';
+    if (!exchange) {
+      throw new Error('RABBITMQ_EXCHANGE is not configured');
+    }
+
     const messageBuffer = Buffer.from(JSON.stringify(message));
 
     this.channel.publish(exchange, routingKey, messageBuffer, {
@@ -66,7 +78,10 @@ export class RabbitMqService {
       throw new Error('RabbitMQ is not connected');
     }
 
-    const queue = this.configService.get<string>('RABBITMQ_QUEUE');
+    const queue = this.configService.get<string>('RABBITMQ_QUEUE') || 'messages';
+    if (!queue) {
+      throw new Error('RABBITMQ_QUEUE is not configured');
+    }
 
     this.channel.consume(queue, async (msg) => {
       if (msg) {
