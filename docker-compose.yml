@@ -1,8 +1,11 @@
+version: '3.9'
+
 services:
   # MongoDB Service
   mongo:
-    image: mongo:6.0
+    image: mongo:7.0-alpine
     container_name: youapp-mongo
+    restart: unless-stopped
     ports:
       - '27017:27017'
     environment:
@@ -17,17 +20,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - youapp-network
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
   # RabbitMQ Service
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
     container_name: youapp-rabbitmq
+    restart: unless-stopped
     ports:
-      - '5672:5672'
-      - '15672:15672'
+      - '5672:5672'   # AMQP port
+      - '15672:15672' # Management console
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -35,35 +48,67 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - youapp-network
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
   # NestJS Application
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: youapp-backend
+    restart: unless-stopped
     ports:
       - '3000:3000'
     environment:
       MONGODB_URI: mongodb://root:root123@mongo:27017/youapp?authSource=admin
       MONGODB_USER: root
       MONGODB_PASSWORD: root123
-      JWT_SECRET: your_super_secret_jwt_key_change_in_production
+      MONGODB_DATABASE: youapp
+      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_change_in_production}
       JWT_EXPIRATION: 24h
       PORT: 3000
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       RABBITMQ_QUEUE: messages
       RABBITMQ_EXCHANGE: chat
-      SOCKET_PORT: 3001
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
     depends_on:
       mongo:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     volumes:
-      - ./src:/app/src
-    command: npm run start:dev
+      - ./src:/app/src  # For development only
+    networks:
+      - youapp-network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/docs']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+networks:
+  youapp-network:
+    driver: bridge
 
 volumes:
   mongo_data:
+    driver: local
   mongo_config:
+    driver: local
   rabbitmq_data:
+    driver: local
